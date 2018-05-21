@@ -18,12 +18,16 @@ int hb_len=1200;
 
 int mtu_warn=1375;//if a packet larger than mtu warn is receviced,there will be a warning
 
+int max_rst_to_show=15;
+
+int max_rst_allowed=-1;
+
 
 fd_manager_t fd_manager;
 
-char local_ip[100]="0.0.0.0", remote_ip[100]="255.255.255.255",source_ip[100]="0.0.0.0";//local_ip is for -l option,remote_ip for -r option,source for --source-ip
+char local_ip[100]="0.0.0.0", remote_host[100]="255.255.255.255",source_ip[100]="0.0.0.0";//local_ip is for -l option,remote_host for -r option,source for --source-ip
 u32_t local_ip_uint32,remote_ip_uint32,source_ip_uint32;//convert from last line.
-int local_port = -1, remote_port=-1,source_port=0;//similiar to local_ip  remote_ip,buf for port.source_port=0 indicates --source-port is not enabled
+int local_port = -1, remote_port=-1,source_port=0;//similiar to local_ip  remote_host,buf for port.source_port=0 indicates --source-port is not enabled
 
 int force_source_ip=0; //if --source-ip is enabled
 
@@ -114,8 +118,8 @@ void print_help()
 	printf("repository: https://github.com/wangyu-/udp2raw-tunnel\n");
 	printf("\n");
 	printf("usage:\n");
-	printf("    run as client : ./this_program -c -l local_listen_ip:local_port -r server_ip:server_port  [options]\n");
-	printf("    run as server : ./this_program -s -l server_listen_ip:server_port -r remote_ip:remote_port  [options]\n");
+	printf("    run as client : ./this_program -c -l local_listen_ip:local_port -r server_host:server_port  [options]\n");
+	printf("    run as server : ./this_program -s -l server_listen_ip:server_port -r remote_host:remote_port  [options]\n");
 	printf("\n");
 	printf("common options,these options must be same on both side:\n");
 	printf("    --raw-mode            <string>        avaliable values:faketcp(default),udp,icmp\n");
@@ -268,6 +272,8 @@ void process_arg(int argc, char *argv[])  //process all options
 		{"hb-mode", required_argument,    0, 1},
 		{"hb-len", required_argument,    0, 1},
 		{"mtu-warn", required_argument,    0, 1},
+		{"max-rst-to-show", required_argument,    0, 1},
+		{"max-rst-allowed", required_argument,    0, 1},
 		{NULL, 0, 0, 0}
 	  };
 
@@ -387,7 +393,7 @@ void process_arg(int argc, char *argv[])  //process all options
 		case 'r':
 			no_r = 0;
 			if (strchr(optarg, ':') != 0) {
-				sscanf(optarg, "%[^:]:%d", remote_ip, &remote_port);
+				sscanf(optarg, "%[^:]:%d", remote_host, &remote_port);
 				if(remote_port==22)
 				{
 					mylog(log_fatal,"port 22 not allowed\n");
@@ -628,6 +634,18 @@ void process_arg(int argc, char *argv[])  //process all options
 				assert(mtu_warn>0);
 				mylog(log_info,"mtu_warn=%d \n",mtu_warn);
 			}
+			else if(strcmp(long_options[option_index].name,"max-rst-to-show")==0)
+			{
+				sscanf(optarg,"%d",&max_rst_to_show);
+				assert(max_rst_to_show>=-1);
+				mylog(log_info,"max_rst_to_show=%d \n",max_rst_to_show);
+			}
+			else if(strcmp(long_options[option_index].name,"max-rst-allowed")==0)
+			{
+				sscanf(optarg,"%d",&max_rst_allowed);
+				assert(max_rst_allowed>=-1);
+				mylog(log_info,"max_rst_allowed=%d \n",max_rst_allowed);
+			}
 			else
 			{
 				mylog(log_warn,"ignored unknown long option ,option_index:%d code:<%x>\n",option_index, optopt);
@@ -665,7 +683,7 @@ void process_arg(int argc, char *argv[])  //process all options
 
 	 log_bare(log_info,"local_ip=%s ",local_ip);
 	 log_bare(log_info,"local_port=%d ",local_port);
-	 log_bare(log_info,"remote_ip=%s ",remote_ip);
+	 log_bare(log_info,"remote_host=%s ",remote_host);
 	 log_bare(log_info,"remote_port=%d ",remote_port);
 	 log_bare(log_info,"source_ip=%s ",source_ip);
 	 log_bare(log_info,"source_port=%d ",source_port);
@@ -830,15 +848,15 @@ void iptables_rule()  // handles -a -g --gen-add  --keep-rule --clear --wait-loc
 	{
 		if(raw_mode==mode_faketcp)
 		{
-			sprintf(tmp_pattern,"-s %s/32 -p tcp -m tcp --sport %d",remote_ip,remote_port);
+			sprintf(tmp_pattern,"-s %s/32 -p tcp -m tcp --sport %d",my_ntoa(remote_ip_uint32),remote_port);
 		}
 		if(raw_mode==mode_udp)
 		{
-			sprintf(tmp_pattern,"-s %s/32 -p udp -m udp --sport %d",remote_ip,remote_port);
+			sprintf(tmp_pattern,"-s %s/32 -p udp -m udp --sport %d",my_ntoa(remote_ip_uint32),remote_port);
 		}
 		if(raw_mode==mode_icmp)
 		{
-			sprintf(tmp_pattern,"-s %s/32 -p icmp",remote_ip);
+			sprintf(tmp_pattern,"-s %s/32 -p icmp",my_ntoa(remote_ip_uint32));
 		}
 		pattern=tmp_pattern;
 	}
